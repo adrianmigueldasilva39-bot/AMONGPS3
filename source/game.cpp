@@ -8,7 +8,7 @@
 #include <sysutil/sysutil.h>
 
 bool Game::init() {
-    padInit(7);
+    ioPadInit(7);
     init_game();
     running = true;
     return true;
@@ -16,7 +16,7 @@ bool Game::init() {
 
 void Game::shutdown() {
     running = false;
-    padEnd();
+    ioPadEnd();
 }
 
 void Game::init_game() {
@@ -276,9 +276,9 @@ void Game::vote_logic() {
 void Game::update_game() {
     frame++;
     timer++;
-    padInfo padinfo;
-    padData paddata;
-    padGetInfo(0, &padinfo);
+    ioPadInfo padinfo;
+    ioPadData paddata;
+    ioPadGetInfo(0, &padinfo);
     int crossNow = 0;
     int triNow = 0;
     int lx = 128;
@@ -286,7 +286,7 @@ void Game::update_game() {
     int crossPressed = 0;
     int triPressed = 0;
     if (padinfo.status) {
-        padGetData(0, 0, &paddata);
+        ioPadGetData(0, &paddata);
         crossNow = (paddata.button[PAD_BUTTON_OFFSET_DIGITAL2] & PAD_CTRL_CROSS) ? 1 : 0;
         triNow = (paddata.button[PAD_BUTTON_OFFSET_DIGITAL2] & PAD_CTRL_TRIANGLE) ? 1 : 0;
         lx = paddata.button[PAD_BUTTON_OFFSET_ANALOG_LEFT_X];
