@@ -1,0 +1,69 @@
+name: Compilar PKG
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ubuntu:20.04
+    steps:
+      - name: Dependencias
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y curl make git python2 python3 libgmp10 libelf1 zlib1g libssl1.1 bzip2 xz-utils
+          ln -sf /usr/bin/python2 /usr/bin/python
+
+      - uses: actions/checkout@v4
+
+      - name: Baixar toolchain do PS3
+        run: |
+          curl -sL https://github.com/bucanero/ps3toolchain/releases/download/ubuntu-latest-fad3b5fb/ps3dev-ubuntu-latest-2020-08-31.tar.gz | tar xz -C /opt
+          ls /opt/ps3dev
+          echo "PS3DEV=/opt/ps3dev" >> $GITHUB_ENV
+          echo "PSL1GHT=/opt/ps3dev" >> $GITHUB_ENV
+          echo "/opt/ps3dev/bin" >> $GITHUB_PATH
+          echo "/opt/ps3dev/ppu/bin" >> $GITHUB_PATH
+
+      - name: Gerar icone
+        run: |
+          python3 - <<'PY'
+          import zlib, struct
+          W, H = 320, 176
+          raw = b''
+          for y in range(H):
+              raw += b'\x00'
+              for x in range(W):
+                  px = (10, 14 + y // 10, 30 + y // 6)
+                  if 100 <= x < 122 and 82 <= y < 126:
+                      px = (120, 10, 10)
+                  if 124 <= x < 156 and 120 <= y < 158:
+                      px = (170, 15, 15)
+                  if 166 <= x < 198 and 120 <= y < 158:
+                      px = (170, 15, 15)
+                  if 120 <= x < 202 and 70 <= y < 132:
+                      px = (197, 17, 17)
+                  if ((x - 161) / 41.0) ** 2 + ((y - 70) / 32.0) ** 2 < 1 and y < 70:
+                      px = (197, 17, 17)
+                  if 120 <= x < 202 and 120 <= y < 132:
+                      px = (150, 10, 10)
+                  if ((x - 180) / 27.0) ** 2 + ((y - 78) / 15.0) ** 2 < 1:
+                      px = (160, 228, 244)
+                  if ((x - 184) / 14.0) ** 2 + ((y - 72) / 4.0) ** 2 < 1:
+                      px = (255, 255, 255)
+                  raw += bytes(px)
+          def chunk(t, d):
+              c = struct.pack('>I', len(d)) + t + d
+              return c + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+          png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', W, H, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
+          open('ICON0.PNG', 'wb').write(png)
+          PY
+
+      - name: Compilar
+        run: make
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: impostor-na-nave-pkg
+          path: amongus.pkg
