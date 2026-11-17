@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<params>
+  <param name="TITLE">Among Us PS3</param>
+  <param name="APP_VER">01.00</param>
+  <param name="CATEGORY">HG</param>
+  <param name="BOOTABLE">1</param>
+  <param name="PARENTAL_LEVEL">0</param>
+  <param name="RESOLUTION">0</param>
+  <param name="SOUND_FORMAT">0</param>
+  <param name="TITLE_ID">AMNG00001</param>
+</params>
