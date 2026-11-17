@@ -6,47 +6,8 @@
 #include <string.h>
 #include <io/pad.h>
 #include <sysutil/sysutil.h>
-#include <rsx/rsx.h>
-#include <rsx/gcm_sys.h>
-
-static gcmContextData *ctx = NULL;
-static void *hostAddr = NULL;
-static rsxBuffer buffers[2];
-static int curBuffer = 0;
-static u32 *depthBuffer = NULL;
-
-extern void rsx_init_gcm();
-extern void rsx_flip();
 
 bool Game::init() {
-    void *host_addr = memalign(1024*1024, 1024*1024);
-    ctx = rsxInit(0x10000, 1024*1024, host_addr);
-    if (!ctx) return false;
-    hostAddr = host_addr;
-    VideoMode mode;
-    VideoState state;
-    videoGetState(0, 0, &state);
-    videoGetResolution(state.displayMode.resolution, &mode);
-    VideoConfiguration vconfig;
-    memset(&vconfig, 0, sizeof(VideoConfiguration));
-    vconfig.resolution = state.displayMode.resolution;
-    vconfig.format = VIDEO_BUFFER_FORMAT_XRGB;
-    vconfig.aspect = state.displayMode.aspect;
-    vconfig.pitch = mode.width * 4;
-    videoConfigure(0, &vconfig, NULL, 0);
-    videoPrepare();
-    for (int i = 0; i < 2; i++) {
-        buffers[i].ptr = rsxMemalign(64, mode.width * mode.height * 4);
-        buffers[i].width = mode.width;
-        buffers[i].height = mode.height;
-        buffers[i].id = i;
-        rsxAddressToOffset(buffers[i].ptr, &buffers[i].offset);
-        gcmSetDisplayBuffer(ctx, i, buffers[i].offset, buffers[i].width * 4, buffers[i].width, buffers[i].height);
-    }
-    depthBuffer = (u32*)rsxMemalign(64, mode.width * mode.height * 4);
-    rsxAddressToOffset(depthBuffer, &buffers[0].offset);
-    gcmSetDepthBuffer(ctx, buffers[0].offset);
-    rsxSetResolution(ctx, mode.width, mode.height);
     padInit(7);
     init_game();
     running = true;
@@ -55,10 +16,6 @@ bool Game::init() {
 
 void Game::shutdown() {
     running = false;
-    if (ctx) {
-        rsxFinish(ctx, 0);
-        rsxFree(ctx);
-    }
     padEnd();
 }
 
@@ -66,8 +23,8 @@ void Game::init_game() {
     state = 0;
     timer = 0;
     frame = 0;
-    camX = 0; camY = 0;
-    padOld = 0;
+    padOldCross = 0;
+    padOldTriangle = 0;
     tasksTotal = 6;
     tasksDoneGlobal = 0;
     emergencyCalled = false;
@@ -76,7 +33,7 @@ void Game::init_game() {
     voteTimer = 0;
     player.x = 640; player.y = 360;
     player.vx = 0; player.vy = 0;
-    player.cor = 0;
+    player.cor = 0xFFFF0000;
     player.id = 0;
     player.vivo = true;
     player.isImpostor = false;
@@ -90,7 +47,7 @@ void Game::init_game() {
     bots.clear();
     bodies.clear();
     tasks.clear();
-    int cores[9] = {0xFFFF0000, 0xFF0000FF, 0xFF00FF00, 0xFFFFFF00, 0xFFFF00FF, 0xFF00FFFF, 0xFFFF8000, 0xFFFFFFFF, 0xFF808080};
+    int cores[9] = {0xFF0000FF, 0xFF00FF00, 0xFFFFFF00, 0xFFFF00FF, 0xFF00FFFF, 0xFFFF8000, 0xFFFFFFFF, 0xFF808080, 0xFF800080};
     impostorId = 3;
     for (int i = 0; i < 9; i++) {
         PlayerBean b;
@@ -119,7 +76,7 @@ void Game::init_game() {
     tasks.push_back(t0); tasks.push_back(t1); tasks.push_back(t2); tasks.push_back(t3); tasks.push_back(t4); tasks.push_back(t5);
 }
 
-void Game::update_player(int buttons, int lx, int ly) {
+void Game::update_player(int crossPressed, int triPressed, int lx, int ly) {
     if (!player.vivo) return;
     if (state == 1) return;
     float speed = 3.2f;
@@ -135,7 +92,7 @@ void Game::update_player(int buttons, int lx, int ly) {
     if (player.x > 1220) player.x = 1220;
     if (player.y < 60) player.y = 60;
     if (player.y > 660) player.y = 660;
-    if (buttons & PAD_BUTTON_CROSS && !(padOld & PAD_BUTTON_CROSS)) {
+    if (crossPressed) {
         for (size_t i = 0; i < tasks.size(); i++) {
             float dx = tasks[i].x - player.x;
             float dy = tasks[i].y - player.y;
@@ -153,7 +110,7 @@ void Game::update_player(int buttons, int lx, int ly) {
             }
         }
     }
-    if (buttons & PAD_BUTTON_TRIANGLE && !(padOld & PAD_BUTTON_TRIANGLE)) {
+    if (triPressed) {
         if (!emergencyCalled) {
             emergencyCalled = true;
             start_meeting(-1);
@@ -217,17 +174,21 @@ void Game::update_impostor() {
         float targetX = player.x;
         float targetY = player.y;
         float best = 999999;
+        bool targetIsPlayer = true;
         if (player.vivo) {
             float dx = player.x - imp.x;
             float dy = player.y - imp.y;
             best = sqrt(dx*dx + dy*dy);
+        } else {
+            best = 999999;
+            targetIsPlayer = false;
         }
         for (size_t j = 0; j < bots.size(); j++) {
             if (bots[j].isImpostor || !bots[j].vivo) continue;
             float dx = bots[j].x - imp.x;
             float dy = bots[j].y - imp.y;
             float d = sqrt(dx*dx + dy*dy);
-            if (d < best) { best = d; targetX = bots[j].x; targetY = bots[j].y; }
+            if (d < best) { best = d; targetX = bots[j].x; targetY = bots[j].y; targetIsPlayer = false; }
         }
         float dx = targetX - imp.x;
         float dy = targetY - imp.y;
@@ -241,7 +202,7 @@ void Game::update_impostor() {
         }
         if (imp.killCooldown > 0) imp.killCooldown--;
         if (dist < 55 && imp.killCooldown <= 0) {
-            if (player.vivo && targetX == player.x) {
+            if (targetIsPlayer && player.vivo) {
                 kill_player(-1);
                 imp.killCooldown = 300;
             } else {
@@ -289,10 +250,8 @@ void Game::start_meeting(int bodyIdx) {
 void Game::vote_logic() {
     voteTimer--;
     if (voteTimer <= 0) {
-        int alive = 0;
         int impostorAlive = 0;
-        for (size_t i = 0; i < bots.size(); i++) if (bots[i].vivo) { alive++; if (bots[i].isImpostor) impostorAlive++; }
-        if (player.vivo) alive++;
+        for (size_t i = 0; i < bots.size(); i++) if (bots[i].vivo && bots[i].isImpostor) impostorAlive++;
         if (impostorAlive == 0) { state = 3; return; }
         if (rand() % 100 < 70) {
             for (size_t i = 0; i < bots.size(); i++) {
@@ -320,18 +279,29 @@ void Game::update_game() {
     padInfo padinfo;
     padData paddata;
     padGetInfo(0, &padinfo);
+    int crossNow = 0;
+    int triNow = 0;
+    int lx = 128;
+    int ly = 128;
+    int crossPressed = 0;
+    int triPressed = 0;
     if (padinfo.status) {
         padGetData(0, 0, &paddata);
-        int buttons = paddata.button[PAD_BUTTON_OFFSET_DIGITAL1] | (paddata.button[PAD_BUTTON_OFFSET_DIGITAL2] << 8);
-        int lx = paddata.analog[PAD_ANALOG_LEFT_X];
-        int ly = paddata.analog[PAD_ANALOG_LEFT_Y];
-        if (state == 1) vote_logic();
-        else if (state == 0) {
-            update_player(buttons, lx, ly);
-            update_bots();
-            update_impostor();
-        }
-        padOld = buttons;
+        crossNow = (paddata.button[PAD_BUTTON_OFFSET_DIGITAL2] & PAD_CTRL_CROSS) ? 1 : 0;
+        triNow = (paddata.button[PAD_BUTTON_OFFSET_DIGITAL2] & PAD_CTRL_TRIANGLE) ? 1 : 0;
+        lx = paddata.button[PAD_ANALOG_LEFT_X];
+        ly = paddata.button[PAD_ANALOG_LEFT_Y];
+        if (crossNow && !padOldCross) crossPressed = 1;
+        if (triNow && !padOldTriangle) triPressed = 1;
+        padOldCross = crossNow;
+        padOldTriangle = triNow;
+    }
+    if (state == 1) {
+        vote_logic();
+    } else if (state == 0) {
+        update_player(crossPressed, triPressed, lx, ly);
+        update_bots();
+        update_impostor();
     }
     if (state == 0) {
         int aliveCrew = 0;
@@ -343,14 +313,7 @@ void Game::update_game() {
         if (aliveCrew <= 1 && impAlive > 0) state = 4;
     }
     if (state == 3 || state == 4) {
-        padInfo pi; padData pd;
-        padGetInfo(0, &pi);
-        if (pi.status) {
-            padGetData(0, 0, &pd);
-            int btn = pd.button[PAD_BUTTON_OFFSET_DIGITAL1] | (pd.button[PAD_BUTTON_OFFSET_DIGITAL2] << 8);
-            if ((btn & PAD_BUTTON_CROSS) && !(padOld & PAD_BUTTON_CROSS)) init_game();
-            padOld = btn;
-        }
+        if (crossPressed) init_game();
     }
 }
 
