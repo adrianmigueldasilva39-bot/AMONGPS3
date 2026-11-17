@@ -44,11 +44,11 @@ private:
     bool emergencyCalled;
     bool running;
     int frame;
-    int camX, camY;
-    int padOld;
+    int padOldCross;
+    int padOldTriangle;
     void init_game();
     void update_game();
-    void update_player(int buttons, int lx, int ly);
+    void update_player(int crossPressed, int triPressed, int lx, int ly);
     void update_bots();
     void update_impostor();
     void do_task(int idx);
