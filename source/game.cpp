@@ -289,8 +289,8 @@ void Game::update_game() {
         padGetData(0, 0, &paddata);
         crossNow = (paddata.button[PAD_BUTTON_OFFSET_DIGITAL2] & PAD_CTRL_CROSS) ? 1 : 0;
         triNow = (paddata.button[PAD_BUTTON_OFFSET_DIGITAL2] & PAD_CTRL_TRIANGLE) ? 1 : 0;
-        lx = paddata.button[PAD_ANALOG_LEFT_X];
-        ly = paddata.button[PAD_ANALOG_LEFT_Y];
+        lx = paddata.button[PAD_BUTTON_OFFSET_ANALOG_LEFT_X];
+        ly = paddata.button[PAD_BUTTON_OFFSET_ANALOG_LEFT_Y];
         if (crossNow && !padOldCross) crossPressed = 1;
         if (triNow && !padOldTriangle) triPressed = 1;
         padOldCross = crossNow;
