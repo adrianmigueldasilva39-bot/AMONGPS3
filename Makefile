@@ -30,23 +30,7 @@ pkg: $(TARGET).self
 	@mkdir -p $(PKG_DIR)/USRDIR
 	@cp $(TARGET).self $(PKG_DIR)/USRDIR/EBOOT.BIN
 	@if [ -f $(ICON0) ]; then cp $(ICON0) $(PKG_DIR)/ICON0.PNG; fi
-	@cat << 'EOF' > sfo.xml
-<?xml version="1.0" encoding="UTF-8"?>
-<sfo>
-  <value name="APP_VER" type="string" max_len="8">01.00</value>
-  <value name="ATTRIBUTE" type="integer">32</value>
-  <value name="BOOTABLE" type="integer">1</value>
-  <value name="CATEGORY" type="string" max_len="4">HG</value>
-  <value name="LICENSE" type="string" max_len="512">Homebrew PS3</value>
-  <value name="PARENTAL_LEVEL" type="integer">1</value>
-  <value name="PS3_SYSTEM_VER" type="string" max_len="8">03.4000</value>
-  <value name="RESOLUTION" type="integer">63</value>
-  <value name="SOUND_FORMAT" type="integer">279</value>
-  <value name="TITLE" type="string" max_len="128">Among Us PS3</value>
-  <value name="TITLE_ID" type="string" max_len="16">AMNG00001</value>
-  <value name="VERSION" type="string" max_len="8">01.00</value>
-</sfo>
-EOF
+	@printf '<?xml version="1.0" encoding="UTF-8"?>\n<sfo>\n  <value name="APP_VER" type="string" max_len="8">01.00</value>\n  <value name="ATTRIBUTE" type="integer">32</value>\n  <value name="BOOTABLE" type="integer">1</value>\n  <value name="CATEGORY" type="string" max_len="4">HG</value>\n  <value name="LICENSE" type="string" max_len="512">Homebrew PS3</value>\n  <value name="PARENTAL_LEVEL" type="integer">1</value>\n  <value name="PS3_SYSTEM_VER" type="string" max_len="8">03.4000</value>\n  <value name="RESOLUTION" type="integer">63</value>\n  <value name="SOUND_FORMAT" type="integer">279</value>\n  <value name="TITLE" type="string" max_len="128">%s</value>\n  <value name="TITLE_ID" type="string" max_len="16">%s</value>\n  <value name="VERSION" type="string" max_len="8">01.00</value>\n</sfo>\n' "$(TITLE)" "$(APPID)" > sfo.xml
 	@$(SFO) sfo.xml $(PKG_DIR)/PARAM.SFO
 	@$(PKG) --contentid $(CONTENTID) $(PKG_DIR)/ $(TARGET).pkg
 
