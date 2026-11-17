@@ -1,67 +1,87 @@
-// source/game.h
-#pragma once
-#include <vector>
-#include <string>
-using namespace std;
+// game.h
+#ifndef GAME_H
+#define GAME_H
 
-struct Vec2 { float x, y; };
-struct Task { int id; float x; float y; bool done; string nome; int progresso; };
-struct Body { float x; float y; int cor; bool reported; };
-struct PlayerBean {
-    float x, y;
-    float vx, vy;
-    int cor;
-    int id;
-    bool vivo;
-    bool isImpostor;
-    bool isPlayer;
-    bool inVent;
-    int killCooldown;
-    int taskIndex;
-    int tasksDone;
-    float dir;
-    bool moving;
-};
+#include <stdint.h>
 
-class Game {
-public:
-    bool init();
-    void run();
-    void shutdown();
-private:
-    PlayerBean player;
-    vector<PlayerBean> bots;
-    vector<Task> tasks;
-    vector<Body> bodies;
-    int state;
-    int timer;
-    int voteTimer;
-    int impostorId;
-    int reportedBody;
-    int votedOut;
-    int tasksTotal;
-    int tasksDoneGlobal;
-    bool emergencyCalled;
-    bool running;
-    int frame;
-    int padOldCross;
-    int padOldTriangle;
-    void init_game();
-    void update_game();
-    void update_player(int crossPressed, int triPressed, int lx, int ly);
-    void update_bots();
-    void update_impostor();
-    void do_task(int idx);
-    void kill_player(int botIdx);
-    void report_body(int bodyIdx);
-    void start_meeting(int bodyIdx);
-    void vote_logic();
-    void render_game();
-    void draw_rect(int x, int y, int w, int h, int cor);
-    void draw_circle(int x, int y, int r, int cor);
-    void draw_bean(int x, int y, int cor, bool vivo, bool impostor);
-    void draw_text(int x, int y, const char* texto);
-    void draw_map();
-    void draw_hud();
-    void draw_meeting();
-};
+#define MAX_CREW 10
+#define MAX_TASKS 8
+#define MAX_WALLS 32
+#define MAX_TERMINALS 6
+
+typedef enum {
+    ROLE_CREWMATE,
+    ROLE_IMPOSTOR
+} Role;
+
+typedef enum {
+    GAME_STATE_PLAYING,
+    GAME_STATE_VOTING,
+    GAME_STATE_VICTORY_CREW,
+    GAME_STATE_VICTORY_IMPOSTOR,
+    GAME_STATE_MENU
+} GameState;
+
+typedef struct {
+    float x, z;
+    float angle;
+    float walkPhase;
+    int alive;
+    Role role;
+    uint32_t color;
+    float speed;
+    int isBot;
+    float taskProgress;
+    int targetTask;
+    float attackCooldown;
+    int votedFor;
+} Crew;
+
+typedef struct {
+    float x, z;
+    float width, depth;
+    float height;
+} Wall;
+
+typedef struct {
+    float x, z;
+    int completed;
+    float progress;
+    int assignedTo;
+} TaskTerminal;
+
+typedef struct {
+    float x, z;
+    float radius;
+} Table;
+
+typedef struct {
+    Wall walls[MAX_WALLS];
+    int wallCount;
+    TaskTerminal terminals[MAX_TERMINALS];
+    int terminalCount;
+    Crew crew[MAX_CREW];
+    int crewCount;
+    Table table;
+    float emergencyButtonX, emergencyButtonZ;
+    int emergencyButtonPressed;
+    GameState state;
+    int lightsOn;
+    float sabotageTimer;
+    float meetingTimer;
+    int ejectedIndex;
+    int voteSkipCount;
+    int votes[MAX_CREW];
+    int playerIndex;
+    float worldTime;
+    float taskBarProgress;
+} Game;
+
+extern Game g_game;
+
+void gameInit(int playerIsImpostor);
+void gameUpdate(float deltaTime, int btnCross, int btnSquare, int btnTriangle, int btnCircle, int btnStart, float analogX, float analogZ);
+void gameRender(void);
+void gameReset(int playerIsImpostor);
+
+#endif
