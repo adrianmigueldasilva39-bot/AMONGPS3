@@ -24,7 +24,7 @@ $(TARGET).elf: $(OBJS)
 	$(CXX) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 $(TARGET).self: $(TARGET).elf
-	$(SELF_NPDRM) $(CONTENTID) $< $@
+	make_self $< $@
 
 pkg: $(TARGET).self
 	@mkdir -p $(PKG_DIR)/USRDIR
