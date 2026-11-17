@@ -14,18 +14,10 @@
 #include "render.h"
 #include "game.h"
 
-static u32 *g_fb;
-static u32 g_fb_offset;
+static u32 *g_fb[2];
+static u32 g_fb_offset[2];
 static gcmContextData *g_context = NULL;
 static int g_curr_fb = 0;
-static int g_running = 1;
-
-static void sysutilCallback(u64 status, u64 param, void *userdata) {
-    (void)param; (void)userdata;
-    if (status == SYSUTIL_EXIT_GAME) {
-        g_running = 0;
-    }
-}
 
 static void waitFlip(void) {
     while (gcmGetFlipStatus() != 0) {
@@ -90,7 +82,6 @@ static void handlePad(padData *pad, int *btnCross, int *btnSquare, int *btnTrian
 
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
-    sysUtilRegisterCallback(0, sysutilCallback, NULL);
 
     initScreen();
     renderInit();
@@ -100,7 +91,7 @@ int main(int argc, char *argv[]) {
     u64 lastTime = sysGetSystemTime();
     float deltaTime = 1.0f / 60.0f;
 
-    while (g_running) {
+    while (1) {
         sysUtilCheckCallback();
 
         u64 now = sysGetSystemTime();
