@@ -1,135 +1,333 @@
-// source/render.cpp
-#include "game.h"
-#include <stdio.h>
-#include <string.h>
-#include <rsx/rsx.h>
-#include <rsx/gcm_sys.h>
+// render.cpp
+#include "render.h"
 #include <math.h>
+#include <string.h>
+#include <stdlib.h>
 
-extern gcmContextData *ctx;
+Pixel g_framebuffer[FB_WIDTH * FB_HEIGHT];
+uint32_t g_fb32[FB_WIDTH * FB_HEIGHT];
 
-void Game::draw_rect(int x, int y, int w, int h, int cor) {
-    (void)x; (void)y; (void)w; (void)h; (void)cor;
-    if (!ctx) return;
-    rsxSetColor(ctx, cor);
-    rsxDrawQuad(ctx, x, y, w, h);
+static float g_camZoom = 14.0f;
+static float g_camIso = 0.6f;
+static float g_camTilt = 0.8f;
+static float g_camX = 0.0f;
+static float g_camY = 0.0f;
+static float g_camZ = 10.0f;
+
+static const uint8_t g_font5x7[96][7] = {
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x18,0x18,0x18,0x18,0x00,0x18,0x00},
+    {0x36,0x36,0x00,0x00,0x00,0x00,0x00},
+    {0x36,0x7F,0x36,0x36,0x7F,0x36,0x00},
+    {0x0C,0x3E,0x0C,0x0C,0x3E,0x0C,0x00},
+    {0x00,0x66,0x66,0x18,0x66,0x66,0x00},
+    {0x3C,0x66,0x3C,0x66,0x66,0x3F,0x00},
+    {0x0C,0x0C,0x00,0x00,0x00,0x00,0x00},
+    {0x18,0x0C,0x0C,0x0C,0x0C,0x18,0x00},
+    {0x18,0x30,0x30,0x30,0x30,0x18,0x00},
+    {0x00,0x66,0x3C,0xFF,0x3C,0x66,0x00},
+    {0x00,0x18,0x18,0x7E,0x18,0x18,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x18,0x0C},
+    {0x00,0x00,0x00,0x7E,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x18,0x00},
+    {0x03,0x06,0x0C,0x18,0x30,0x60,0x00},
+    {0x3C,0x66,0x6E,0x76,0x66,0x3C,0x00},
+    {0x18,0x38,0x18,0x18,0x18,0x7E,0x00},
+    {0x3C,0x66,0x06,0x0C,0x18,0x7E,0x00},
+    {0x3C,0x66,0x06,0x1C,0x66,0x3C,0x00},
+    {0x0C,0x1C,0x3C,0x6C,0x7E,0x0C,0x00},
+    {0x7E,0x60,0x7C,0x06,0x66,0x3C,0x00},
+    {0x1C,0x30,0x60,0x7C,0x66,0x3C,0x00},
+    {0x7E,0x66,0x0C,0x18,0x18,0x18,0x00},
+    {0x3C,0x66,0x66,0x3C,0x66,0x3C,0x00},
+    {0x3C,0x66,0x3E,0x06,0x0C,0x38,0x00},
+    {0x00,0x18,0x00,0x00,0x18,0x00,0x00},
+    {0x00,0x18,0x00,0x00,0x18,0x0C,0x00},
+    {0x0C,0x18,0x30,0x60,0x30,0x18,0x00},
+    {0x00,0x00,0x7E,0x00,0x7E,0x00,0x00},
+    {0x60,0x30,0x18,0x0C,0x18,0x30,0x00},
+    {0x3C,0x66,0x06,0x0C,0x18,0x00,0x18},
+    {0x3C,0x66,0x6E,0x6E,0x60,0x3E,0x00},
+    {0x18,0x3C,0x66,0x66,0x7E,0x66,0x00},
+    {0x7C,0x66,0x66,0x7C,0x66,0x7C,0x00},
+    {0x3C,0x66,0x60,0x60,0x66,0x3C,0x00},
+    {0x78,0x6C,0x66,0x66,0x6C,0x78,0x00},
+    {0x7E,0x60,0x60,0x7C,0x60,0x7E,0x00},
+    {0x7E,0x60,0x60,0x7C,0x60,0x60,0x00},
+    {0x3E,0x60,0x60,0x6E,0x66,0x3E,0x00},
+    {0x66,0x66,0x66,0x7E,0x66,0x66,0x00},
+    {0x7E,0x18,0x18,0x18,0x18,0x7E,0x00},
+    {0x3E,0x0C,0x0C,0x0C,0x6C,0x38,0x00},
+    {0x66,0x6C,0x78,0x70,0x78,0x6C,0x00},
+    {0x60,0x60,0x60,0x60,0x60,0x7E,0x00},
+    {0x63,0x77,0x7F,0x6B,0x63,0x63,0x00},
+    {0x66,0x76,0x7E,0x6E,0x66,0x66,0x00},
+    {0x3C,0x66,0x66,0x66,0x66,0x3C,0x00},
+    {0x7C,0x66,0x66,0x7C,0x60,0x60,0x00},
+    {0x3C,0x66,0x66,0x66,0x6C,0x36,0x00},
+    {0x7C,0x66,0x66,0x7C,0x6C,0x66,0x00},
+    {0x3C,0x60,0x60,0x3C,0x06,0x7C,0x00},
+    {0x7E,0x18,0x18,0x18,0x18,0x18,0x00},
+    {0x66,0x66,0x66,0x66,0x66,0x3C,0x00},
+    {0x66,0x66,0x66,0x66,0x3C,0x18,0x00},
+    {0x63,0x63,0x6B,0x7F,0x77,0x63,0x00},
+    {0x66,0x66,0x3C,0x18,0x3C,0x66,0x00},
+    {0x66,0x66,0x66,0x3C,0x18,0x18,0x00},
+    {0x7E,0x06,0x0C,0x18,0x30,0x7E,0x00},
+    {0x3C,0x30,0x30,0x30,0x30,0x3C,0x00},
+    {0x60,0x30,0x18,0x0C,0x06,0x03,0x00},
+    {0x3C,0x0C,0x0C,0x0C,0x0C,0x3C,0x00},
+    {0x18,0x3C,0x66,0x00,0x00,0x00,0x00},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0xFF}
+};
+
+void renderInit(void) {
+    memset(g_framebuffer, 0, sizeof(g_framebuffer));
+    memset(g_fb32, 0, sizeof(g_fb32));
 }
 
-void Game::draw_circle(int x, int y, int r, int cor) {
-    (void)x; (void)y; (void)r; (void)cor;
-    if (!ctx) return;
-    rsxSetColor(ctx, cor);
-    rsxDrawQuad(ctx, x - r, y - r, r*2, r*2);
-}
-
-void Game::draw_bean(int x, int y, int cor, bool vivo, bool impostor) {
-    if (!vivo) {
-        draw_rect(x - 18, y + 10, 36, 10, 0xFFAAAAAA);
-        draw_circle(x, y - 5, 16, cor);
-        return;
-    }
-    draw_rect(x - 18, y - 10, 36, 38, cor);
-    draw_circle(x, y - 12, 20, cor);
-    draw_rect(x - 12, y - 18, 24, 12, 0xFFB0E0FF);
-    draw_rect(x - 8, y - 16, 16, 8, 0xFF000000);
-    draw_rect(x - 14, y + 28, 10, 12, cor);
-    draw_rect(x + 4, y + 28, 10, 12, cor);
-    if (impostor) {
-        draw_rect(x - 4, y - 22, 8, 6, 0xFFFF0000);
+void renderClear(uint32_t color) {
+    int i;
+    for (i = 0; i < FB_WIDTH * FB_HEIGHT; i++) {
+        g_fb32[i] = color;
+        g_framebuffer[i].z = 1e30f;
+        g_framebuffer[i].color = color;
     }
 }
 
-void Game::draw_text(int x, int y, const char* texto) {
-    (void)x; (void)y; (void)texto;
+void renderPresent(uint32_t *dst) {
+    if (!dst) return;
+    memcpy(dst, g_fb32, FB_WIDTH * FB_HEIGHT * sizeof(uint32_t));
 }
 
-void Game::draw_map() {
-    draw_rect(0, 0, 1280, 720, 0xFF1A1A2E);
-    draw_rect(40, 40, 1200, 640, 0xFF2D2D44);
-    draw_rect(40, 40, 1200, 30, 0xFF3A3A5C);
-    draw_rect(40, 650, 1200, 30, 0xFF3A3A5C);
-    draw_rect(250, 120, 180, 120, 0xFF444466);
-    draw_rect(850, 120, 180, 120, 0xFF444466);
-    draw_rect(250, 480, 180, 120, 0xFF444466);
-    draw_rect(850, 480, 180, 120, 0xFF444466);
-    draw_rect(580, 80, 120, 80, 0xFF555577);
-    draw_rect(580, 560, 120, 80, 0xFF555577);
-    draw_rect(580, 300, 120, 120, 0xFFFF0000);
-    draw_rect(600, 320, 80, 80, 0xFFFFAA00);
-    for (size_t i = 0; i < tasks.size(); i++) {
-        if (tasks[i].done) draw_circle(tasks[i].x, tasks[i].y, 18, 0xFF00FF00);
-        else draw_circle(tasks[i].x, tasks[i].y, 18, 0xFFFFFF00);
-    }
-    for (size_t i = 0; i < bodies.size(); i++) {
-        draw_bean(bodies[i].x, bodies[i].y, bodies[i].cor, false, false);
+void renderSetCamera(float isoAngle, float tiltAngle, float zoom, float camX, float camY, float camZ) {
+    g_camIso = isoAngle;
+    g_camTilt = tiltAngle;
+    g_camZoom = zoom;
+    g_camX = camX;
+    g_camY = camY;
+    g_camZ = camZ;
+}
+
+Vec3 renderProject(Vec3 world) {
+    Vec3 r;
+    float wx = world.x - g_camX;
+    float wy = world.y - g_camY;
+    float wz = world.z - g_camZ;
+
+    float cosIso = cosf(g_camIso);
+    float sinIso = sinf(g_camIso);
+    float cosTilt = cosf(g_camTilt);
+    float sinTilt = sinf(g_camTilt);
+
+    float rx = wx * cosIso - wz * sinIso;
+    float rz = wx * sinIso + wz * cosIso;
+    float ry = wy * cosTilt - rz * sinTilt;
+    float rz2 = wy * sinTilt + rz * cosTilt;
+
+    r.x = (rx * g_camZoom) + (FB_WIDTH * 0.5f);
+    r.y = (-ry * g_camZoom) + (FB_HEIGHT * 0.55f);
+    r.z = rz2;
+    return r;
+}
+
+static void plotPixel(int x, int y, uint32_t color, float z) {
+    if (x < 0 || x >= FB_WIDTH || y < 0 || y >= FB_HEIGHT) return;
+    int idx = y * FB_WIDTH + x;
+    if (z < g_framebuffer[idx].z) {
+        g_framebuffer[idx].z = z;
+        g_framebuffer[idx].color = color;
+        g_fb32[idx] = color;
     }
 }
 
-void Game::draw_hud() {
-    char buf[128];
-    sprintf(buf, "TAREFAS: %d / %d", tasksDoneGlobal, tasksTotal);
-    draw_text(20, 20, buf);
-    sprintf(buf, "VOCE: TRIPULANTE");
-    draw_text(20, 45, buf);
-    if (!player.vivo) {
-        draw_text(500, 350, "VOCE FOI ELIMINADO");
+void renderFillTriangle(Vec3 v0, Vec3 v1, Vec3 v2, uint32_t baseColor, float lightDirX, float lightDirY, float lightDirZ) {
+    Vec3 p0 = renderProject(v0);
+    Vec3 p1 = renderProject(v1);
+    Vec3 p2 = renderProject(v2);
+
+    float ex1 = v1.x - v0.x;
+    float ey1 = v1.y - v0.y;
+    float ez1 = v1.z - v0.z;
+    float ex2 = v2.x - v0.x;
+    float ey2 = v2.y - v0.y;
+    float ez2 = v2.z - v0.z;
+
+    float nx = ey1 * ez2 - ez1 * ey2;
+    float ny = ez1 * ex2 - ex1 * ez2;
+    float nz = ex1 * ey2 - ey1 * ex2;
+    float nlen = sqrtf(nx * nx + ny * ny + nz * nz);
+    if (nlen > 0.0001f) {
+        nx /= nlen;
+        ny /= nlen;
+        nz /= nlen;
     }
-    if (player.vivo) {
-        for (size_t i = 0; i < tasks.size(); i++) {
-            float dx = tasks[i].x - player.x;
-            float dy = tasks[i].y - player.y;
-            if (sqrt(dx*dx + dy*dy) < 70 && !tasks[i].done) {
-                draw_text(480, 680, "APERTE X PARA FAZER TAREFA");
+
+    float llen = sqrtf(lightDirX * lightDirX + lightDirY * lightDirY + lightDirZ * lightDirZ);
+    if (llen > 0.0001f) {
+        lightDirX /= llen;
+        lightDirY /= llen;
+        lightDirZ /= llen;
+    }
+
+    float dot = nx * lightDirX + ny * lightDirY + nz * lightDirZ;
+    if (dot < 0.0f) dot = -dot;
+    float shade = 0.35f + 0.65f * dot;
+    if (shade > 1.0f) shade = 1.0f;
+    if (shade < 0.2f) shade = 0.2f;
+
+    uint32_t r = (baseColor >> 16) & 0xFF;
+    uint32_t g = (baseColor >> 8) & 0xFF;
+    uint32_t b = baseColor & 0xFF;
+    r = (uint32_t)((float)r * shade);
+    g = (uint32_t)((float)g * shade);
+    b = (uint32_t)((float)b * shade);
+    if (r > 255) r = 255;
+    if (g > 255) g = 255;
+    if (b > 255) b = 255;
+    uint32_t finalColor = (r << 16) | (g << 8) | b;
+
+    int minX = (int)floorf(fminf(p0.x, fminf(p1.x, p2.x)));
+    int maxX = (int)ceilf(fmaxf(p0.x, fmaxf(p1.x, p2.x)));
+    int minY = (int)floorf(fminf(p0.y, fminf(p1.y, p2.y)));
+    int maxY = (int)ceilf(fmaxf(p0.y, fmaxf(p1.y, p2.y)));
+
+    if (minX < 0) minX = 0;
+    if (minY < 0) minY = 0;
+    if (maxX >= FB_WIDTH) maxX = FB_WIDTH - 1;
+    if (maxY >= FB_HEIGHT) maxY = FB_HEIGHT - 1;
+
+    float area = (p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y);
+    if (fabsf(area) < 0.0001f) return;
+    if (area < 0.0f) {
+        Vec3 tmp = p1;
+        p1 = p2;
+        p2 = tmp;
+        area = -area;
+    }
+
+    int x, y;
+    for (y = minY; y <= maxY; y++) {
+        for (x = minX; x <= maxX; x++) {
+            float px = (float)x + 0.5f;
+            float py = (float)y + 0.5f;
+            float w0 = ((p1.x - p0.x) * (py - p0.y) - (px - p0.x) * (p1.y - p0.y)) / area;
+            float w1 = ((px - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (py - p0.y)) / area;
+            float w2 = 1.0f - w0 - w1;
+            if (w0 >= 0.0f && w1 >= 0.0f && w2 >= 0.0f) {
+                float z = p0.z * w0 + p1.z * w1 + p2.z * w2;
+                plotPixel(x, y, finalColor, z);
             }
         }
-        for (size_t i = 0; i < bodies.size(); i++) {
-            if (bodies[i].reported) continue;
-            float dx = bodies[i].x - player.x;
-            float dy = bodies[i].y - player.y;
-            if (sqrt(dx*dx + dy*dy) < 80) {
-                draw_text(480, 680, "APERTE X PARA REPORTAR CORPO");
+    }
+}
+
+void renderDrawLine(float x0, float y0, float x1, float y1, uint32_t color) {
+    int ix0 = (int)x0;
+    int iy0 = (int)y0;
+    int ix1 = (int)x1;
+    int iy1 = (int)y1;
+    int dx = abs(ix1 - ix0);
+    int dy = -abs(iy1 - iy0);
+    int sx = ix0 < ix1 ? 1 : -1;
+    int sy = iy0 < iy1 ? 1 : -1;
+    int err = dx + dy;
+    while (1) {
+        if (ix0 >= 0 && ix0 < FB_WIDTH && iy0 >= 0 && iy0 < FB_HEIGHT) {
+            int idx = iy0 * FB_WIDTH + ix0;
+            g_fb32[idx] = color;
+        }
+        if (ix0 == ix1 && iy0 == iy1) break;
+        int e2 = 2 * err;
+        if (e2 >= dy) { err += dy; ix0 += sx; }
+        if (e2 <= dx) { err += dx; iy0 += sy; }
+    }
+}
+
+void renderFillRect(int x, int y, int w, int h, uint32_t color) {
+    int i, j;
+    int x0 = x, y0 = y, x1 = x + w, y1 = y + h;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > FB_WIDTH) x1 = FB_WIDTH;
+    if (y1 > FB_HEIGHT) y1 = FB_HEIGHT;
+    for (j = y0; j < y1; j++) {
+        for (i = x0; i < x1; i++) {
+            g_fb32[j * FB_WIDTH + i] = color;
+        }
+    }
+}
+
+void renderDrawText(int x, int y, const char *text, uint32_t color, int scale) {
+    if (!text) return;
+    if (scale < 1) scale = 1;
+    int cx = x;
+    int row, col;
+    while (*text) {
+        char c = *text;
+        int idx = (int)c - 32;
+        if (idx < 0 || idx >= 96) idx = 0;
+        for (row = 0; row < 7; row++) {
+            uint8_t bits = g_font5x7[idx][row];
+            for (col = 0; col < 5; col++) {
+                if (bits & (1 << (4 - col))) {
+                    int px, py;
+                    for (py = 0; py < scale; py++) {
+                        for (px = 0; px < scale; px++) {
+                            int drawX = cx + col * scale + px;
+                            int drawY = y + row * scale + py;
+                            if (drawX >= 0 && drawX < FB_WIDTH && drawY >= 0 && drawY < FB_HEIGHT) {
+                                g_fb32[drawY * FB_WIDTH + drawX] = color;
+                            }
+                        }
+                    }
+                }
             }
         }
+        cx += 6 * scale;
+        text++;
     }
-    draw_text(1050, 20, "TRIANGULO: EMERGENCIA");
 }
 
-void Game::draw_meeting() {
-    draw_rect(0, 0, 1280, 720, 0xFF000000);
-    draw_text(450, 80, "REUNIAO DE EMERGENCIA");
-    draw_text(420, 130, "QUEM E O IMPOSTOR? VOTANDO...");
-    char buf[64];
-    sprintf(buf, "TEMPO: %d", voteTimer / 60);
-    draw_text(550, 170, buf);
-    for (size_t i = 0; i < bots.size(); i++) {
-        int bx = 150 + (i % 5) * 220;
-        int by = 250 + (i / 5) * 160;
-        draw_bean(bx, by, bots[i].cor, bots[i].vivo, false);
-    }
-    draw_bean(150, 570, player.cor, player.vivo, false);
-}
-
-void Game::render_game() {
-    if (!ctx) return;
-    rsxSetClearColor(ctx, 0xFF1A1A2E);
-    rsxClearSurface(ctx, GCM_CLEAR_R | GCM_CLEAR_G | GCM_CLEAR_B | GCM_CLEAR_A | GCM_CLEAR_S | GCM_CLEAR_Z);
-    if (state == 1) {
-        draw_meeting();
-    } else if (state == 3) {
-        draw_rect(0, 0, 1280, 720, 0xFF00AA00);
-        draw_text(450, 300, "TRIPULANTES VENCERAM!");
-        draw_text(430, 340, "APERTE X PARA JOGAR DE NOVO");
-    } else if (state == 4) {
-        draw_rect(0, 0, 1280, 720, 0xFFAA0000);
-        draw_text(450, 300, "IMPOSTOR VENCEU!");
-        draw_text(430, 340, "APERTE X PARA JOGAR DE NOVO");
-    } else {
-        draw_map();
-        for (size_t i = 0; i < bots.size(); i++) {
-            draw_bean(bots[i].x, bots[i].y, bots[i].cor, bots[i].vivo, false);
-        }
-        if (player.vivo) draw_bean(player.x, player.y, player.cor, true, false);
-        draw_hud();
-    }
-    rsxFlip(ctx, 0);
+void renderDrawTextCentered(int cx, int y, const char *text, uint32_t color, int scale) {
+    if (!text) return;
+    if (scale < 1) scale = 1;
+    int len = 0;
+    const char *p = text;
+    while (*p) { len++; p++; }
+    int totalWidth = len * 6 * scale;
+    int startX = cx - totalWidth / 2;
+    renderDrawText(startX, y, text, color, scale);
 }
