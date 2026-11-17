@@ -7,86 +7,80 @@
 #include <sys/systime.h>
 #include <sysutil/video.h>
 #include <sysutil/sysutil.h>
-#include <io/pad.h>
 #include <rsx/rsx.h>
-#include <rsx/gcm_sys.h>
+#include <io/pad.h>
 
 #include "render.h"
 #include "game.h"
 
-static u32 *g_fb[2];
-static u32 g_fb_offset[2];
-static gcmContextData *g_context = NULL;
-static int g_curr_fb = 0;
+#define CB_SIZE   0x100000
+#define HOST_SIZE (32 * 1024 * 1024)
 
-static void waitFlip(void) {
-    while (gcmGetFlipStatus() != 0) {
-        sysUsleep(200);
-    }
-    gcmResetFlipStatus();
-}
+/* ---------- Video / RSX (baseado no codigo que abriu video no PS3) ---------- */
+static gcmContextData *ctx;
+static void *bufs[2];
+static u32   offs[2];
+static int   cur = 0;
 
-static void flipFrame(int bufferId) {
-    gcmSetFlip(g_context, bufferId);
-    rsxFlushBuffer(g_context);
-    gcmSetWaitFlip(g_context);
-}
-
-static void initScreen(void) {
-    void *host_addr = memalign(1024 * 1024, 2 * 1024 * 1024);
-    rsxInit(&g_context, 1024, 1024, host_addr);
-
+static void video_init(void) {
     videoState state;
-    videoConfiguration vconfig;
-    memset(&state, 0, sizeof(state));
+    videoConfiguration vc;
+    void *host;
+    int i;
+
     videoGetState(0, 0, &state);
 
-    memset(&vconfig, 0, sizeof(vconfig));
-    vconfig.resolution = VIDEO_RESOLUTION_720;
-    vconfig.format = VIDEO_BUFFER_FORMAT_XRGB;
-    vconfig.pitch = FB_WIDTH * 4;
-    vconfig.aspect = VIDEO_ASPECT_16_9;
-    videoConfigure(0, &vconfig, NULL, 0);
+    memset(&vc, 0, sizeof(vc));
+    vc.resolution = VIDEO_RESOLUTION_720;
+    vc.format     = VIDEO_BUFFER_FORMAT_XRGB;
+    vc.pitch      = FB_WIDTH * 4;
+    vc.aspect     = VIDEO_ASPECT_AUTO;
+    videoConfigure(0, &vc, NULL, 0);
+    videoGetState(0, 0, &state);
 
-    gcmSetFlipMode(GCM_FLIP_VSYNC);
+    host = memalign(1024 * 1024, HOST_SIZE);
+    rsxInit(&ctx, CB_SIZE, HOST_SIZE, host);
 
-    for (int i = 0; i < 2; i++) {
-        g_fb[i] = (u32 *)rsxMemalign(64, FB_WIDTH * FB_HEIGHT * 4);
-        memset(g_fb[i], 0, FB_WIDTH * FB_HEIGHT * 4);
-        rsxAddressToOffset(g_fb[i], &g_fb_offset[i]);
-        gcmSetDisplayBuffer(i, g_fb_offset[i], FB_WIDTH * 4, FB_WIDTH, FB_HEIGHT);
+    for (i = 0; i < 2; i++) {
+        bufs[i] = rsxMemalign(64, FB_WIDTH * FB_HEIGHT * 4);
+        memset(bufs[i], 0, FB_WIDTH * FB_HEIGHT * 4);
+        rsxAddressToOffset(bufs[i], &offs[i]);
+        gcmSetDisplayBuffer(i, offs[i], FB_WIDTH * 4, FB_WIDTH, FB_HEIGHT);
     }
+}
 
-    gcmResetFlipStatus();
-    flipFrame(0);
-    g_curr_fb = 1;
+static void flip(void) {
+    gcmSetFlip(ctx, cur);
+    rsxFlushBuffer(ctx);
+    gcmSetWaitFlip(ctx);
+    cur ^= 1;
 }
 
 static void handlePad(padData *pad, int *btnCross, int *btnSquare, int *btnTriangle, int *btnCircle, int *btnStart, float *ax, float *az) {
-    *btnCross = (pad->BTN_CROSS != 0);
-    *btnSquare = (pad->BTN_SQUARE != 0);
+    *btnCross    = (pad->BTN_CROSS != 0);
+    *btnSquare   = (pad->BTN_SQUARE != 0);
     *btnTriangle = (pad->BTN_TRIANGLE != 0);
-    *btnCircle = (pad->BTN_CIRCLE != 0);
-    *btnStart = (pad->BTN_START != 0);
+    *btnCircle   = (pad->BTN_CIRCLE != 0);
+    *btnStart    = (pad->BTN_START != 0);
 
     float rawX = (float)pad->ANA_L_H;
     float rawZ = (float)pad->ANA_L_V;
     *ax = (rawX - 127.5f) / 127.5f;
     *az = (rawZ - 127.5f) / 127.5f;
 
-    if (pad->BTN_LEFT) *ax = -1.0f;
-    if (pad->BTN_RIGHT) *ax = 1.0f;
-    if (pad->BTN_UP) *az = -1.0f;
-    if (pad->BTN_DOWN) *az = 1.0f;
+    if (pad->BTN_LEFT)  *ax = -1.0f;
+    if (pad->BTN_RIGHT) *ax =  1.0f;
+    if (pad->BTN_UP)    *az = -1.0f;
+    if (pad->BTN_DOWN)  *az =  1.0f;
 }
 
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
 
-    initScreen();
+    video_init();
+    ioPadInit(7);
     renderInit();
     gameInit(0);
-    ioPadInit(7);
 
     u64 lastTime = sysGetSystemTime();
     float deltaTime = 1.0f / 60.0f;
@@ -113,10 +107,8 @@ int main(int argc, char *argv[]) {
         gameUpdate(deltaTime, btnCross, btnSquare, btnTriangle, btnCircle, btnStart, ax, az);
         gameRender();
 
-        waitFlip();
-        renderPresent(g_fb[g_curr_fb]);
-        flipFrame(g_curr_fb);
-        g_curr_fb ^= 1;
+        renderPresent((uint32_t *)bufs[cur]);
+        flip();
     }
 
     return 0;
