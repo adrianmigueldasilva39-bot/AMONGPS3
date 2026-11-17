@@ -6,6 +6,7 @@
 #include <malloc.h>
 #include <sys/systime.h>
 #include <sysutil/video.h>
+#include <sysutil/sysutil.h>
 #include <io/pad.h>
 #include <rsx/rsx.h>
 #include <rsx/gcm_sys.h>
@@ -13,11 +14,18 @@
 #include "render.h"
 #include "game.h"
 
-static u32 *g_fb[2];
-static u32 g_depth_offset;
-static gcmContextData *g_context;
+static u32 *g_fb;
+static u32 g_fb_offset;
+static gcmContextData *g_context = NULL;
 static int g_curr_fb = 0;
-static videoResolution g_res;
+static int g_running = 1;
+
+static void sysutilCallback(u64 status, u64 param, void *userdata) {
+    (void)param; (void)userdata;
+    if (status == SYSUTIL_EXIT_GAME) {
+        g_running = 0;
+    }
+}
 
 static void waitFlip(void) {
     while (gcmGetFlipStatus() != 0) {
@@ -26,45 +34,40 @@ static void waitFlip(void) {
     gcmResetFlipStatus();
 }
 
-static void flipFrame(void) {
-    waitFlip();
-    gcmSetFlip(g_context, g_curr_fb);
+static void flipFrame(int bufferId) {
+    gcmSetFlip(g_context, bufferId);
     rsxFlushBuffer(g_context);
     gcmSetWaitFlip(g_context);
-    g_curr_fb ^= 1;
 }
 
 static void initScreen(void) {
+    void *host_addr = memalign(1024 * 1024, 2 * 1024 * 1024);
+    rsxInit(&g_context, 1024, 1024, host_addr);
+
     videoState state;
     videoConfiguration vconfig;
     memset(&state, 0, sizeof(state));
-    if (videoGetState(0, 0, &state) != 0) return;
-    if (videoGetResolution(state.displayMode.resolution, &g_res) != 0) return;
+    videoGetState(0, 0, &state);
 
     memset(&vconfig, 0, sizeof(vconfig));
     vconfig.resolution = VIDEO_RESOLUTION_720;
     vconfig.format = VIDEO_BUFFER_FORMAT_XRGB;
-    vconfig.pitch = g_res.width * 4;
-    vconfig.aspect = state.displayMode.aspect;
+    vconfig.pitch = FB_WIDTH * 4;
+    vconfig.aspect = VIDEO_ASPECT_16_9;
     videoConfigure(0, &vconfig, NULL, 0);
-    videoGetState(0, 0, &state);
 
-    void *host_addr = memalign(1024 * 1024, 2 * 1024 * 1024);
-    rsxInit(&g_context, 1024, 1024, host_addr);
     gcmSetFlipMode(GCM_FLIP_VSYNC);
 
-    int i;
-    for (i = 0; i < 2; i++) {
-        g_fb[i] = (u32 *)rsxMemalign(64, g_res.width * g_res.height * 4);
-        rsxAddressToOffset(g_fb[i], &g_depth_offset);
-        gcmSetDisplayBuffer(i, g_depth_offset, g_res.width * 4, g_res.width, g_res.height);
+    for (int i = 0; i < 2; i++) {
+        g_fb[i] = (u32 *)rsxMemalign(64, FB_WIDTH * FB_HEIGHT * 4);
+        memset(g_fb[i], 0, FB_WIDTH * FB_HEIGHT * 4);
+        rsxAddressToOffset(g_fb[i], &g_fb_offset[i]);
+        gcmSetDisplayBuffer(i, g_fb_offset[i], FB_WIDTH * 4, FB_WIDTH, FB_HEIGHT);
     }
 
-    for (i = 0; i < 2; i++) {
-        gcmSetWaitFlip(g_context);
-        flipFrame();
-    }
     gcmResetFlipStatus();
+    flipFrame(0);
+    g_curr_fb = 1;
 }
 
 static void handlePad(padData *pad, int *btnCross, int *btnSquare, int *btnTriangle, int *btnCircle, int *btnStart, float *ax, float *az) {
@@ -86,16 +89,20 @@ static void handlePad(padData *pad, int *btnCross, int *btnSquare, int *btnTrian
 }
 
 int main(int argc, char *argv[]) {
-    int playerIsImpostor = (argc > 1 && strcmp(argv[1], "impostor") == 0);
-    gameInit(playerIsImpostor);
-    renderInit();
+    (void)argc; (void)argv;
+    sysUtilRegisterCallback(0, sysutilCallback, NULL);
+
     initScreen();
+    renderInit();
+    gameInit(0);
     ioPadInit(7);
 
     u64 lastTime = sysGetSystemTime();
     float deltaTime = 1.0f / 60.0f;
 
-    while (1) {
+    while (g_running) {
+        sysUtilCheckCallback();
+
         u64 now = sysGetSystemTime();
         deltaTime = (float)(now - lastTime) / 1000000.0f;
         if (deltaTime > 0.1f) deltaTime = 0.1f;
@@ -106,14 +113,19 @@ int main(int argc, char *argv[]) {
         memset(&pad, 0, sizeof(pad));
         ioPadGetData(0, &pad);
 
-        int btnCross, btnSquare, btnTriangle, btnCircle, btnStart;
-        float ax, az;
-        handlePad(&pad, &btnCross, &btnSquare, &btnTriangle, &btnCircle, &btnStart, &ax, &az);
+        int btnCross = 0, btnSquare = 0, btnTriangle = 0, btnCircle = 0, btnStart = 0;
+        float ax = 0.0f, az = 0.0f;
+        if (pad.len > 0) {
+            handlePad(&pad, &btnCross, &btnSquare, &btnTriangle, &btnCircle, &btnStart, &ax, &az);
+        }
 
         gameUpdate(deltaTime, btnCross, btnSquare, btnTriangle, btnCircle, btnStart, ax, az);
         gameRender();
+
+        waitFlip();
         renderPresent(g_fb[g_curr_fb]);
-        flipFrame();
+        flipFrame(g_curr_fb);
+        g_curr_fb ^= 1;
     }
 
     return 0;
