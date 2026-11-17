@@ -1,49 +1,44 @@
 # Makefile
 ifeq ($(strip $(PSL1GHT)),)
-$(error "Defina a variavel PSL1GHT")
+$(error "Please set PSL1GHT in your environment. export PSL1GHT=<path>")
 endif
+
 include $(PSL1GHT)/ppu_rules
 
-TARGET    := tripulante
-TITLE     := Tripulante Arena
-APPID     := TRIP00001
-CONTENTID := UP0001-$(APPID)_00-0000000000000000
-SFOXML    := sfo.xml
-PORTLIBS  := $(PS3DEV)/portlibs/ppu
+TARGET      := amongus_ps3
+TITLE       := Among Us PS3
+APPID       := AMNG00001
+CONTENTID   := UP0001-AMNG00001_00-0000000000000001
+ICON0       := ICON0.PNG
+PKG_DIR     := pkg
 
-CXX       := $(PS3DEV)/ppu/bin/ppu-g++
-CC        := $(PS3DEV)/ppu/bin/ppu-gcc
+CFLAGS      := -O2 -Wall -std=gnu++11 -I$(PSL1GHT)/ppu/include
+LDFLAGS     := -L$(PSL1GHT)/ppu/lib -L$(PSL1GHT)/ppu/lib/psl1ght
+LIBS        := -lrsx -lgcm_sys -lio -lsysutil -lrt -llv2 -lm -lnet -lstdc++
 
-MACHDEP := -mhard-float -fmodulo-sched -ffunction-sections -fdata-sections
-CXXFLAGS  := -O2 -Wall -mcpu=cell $(MACHDEP) -fno-exceptions -fno-rtti -I$(PSL1GHT)/ppu/include -I$(PORTLIBS)/include -Isource
-CFLAGS    := -O2 -Wall -mcpu=cell $(MACHDEP) -I$(PSL1GHT)/ppu/include -I$(PORTLIBS)/include
-LDFLAGS := $(MACHDEP) -L$(PSL1GHT)/ppu/lib -L$(PORTLIBS)/lib
-LIBS    := -lrsx -lgcm_sys -lio -lsysutil -lrt -llv2 -lm -lstdc++
+OBJS        := main.o game.o render.o
 
-OBJS := source/main.o source/game.o source/render.o
-
-all: $(TARGET).pkg
-
-source/main.o: source/main.cpp source/game.h
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-source/game.o: source/game.cpp source/game.h
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-source/render.o: source/render.cpp source/game.h
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+all: $(TARGET).self
 
 $(TARGET).elf: $(OBJS)
-	$(CXX) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)
+	$(CXX) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
-$(TARGET).pkg: $(TARGET).elf ICON0.PNG $(SFOXML)
-	rm -rf pkg
-	mkdir -p pkg/USRDIR
-	cp ICON0.PNG pkg/ICON0.PNG
-	$(PS3DEV)/bin/sprxlinker $(TARGET).elf
-	$(PS3DEV)/bin/make_self_npdrm $(TARGET).elf pkg/USRDIR/EBOOT.BIN $(CONTENTID)
-	$(PS3DEV)/bin/sfo.py --title "$(TITLE)" --appid "$(APPID)" -f $(SFOXML) pkg/PARAM.SFO
-	$(PS3DEV)/bin/pkg.py --contentid $(CONTENTID) pkg/ $@
+$(TARGET).self: $(TARGET).elf
+	$(SELF_NPDRM) $(CONTENTID) $< $@
+
+pkg: $(TARGET).self
+	@mkdir -p $(PKG_DIR)/USRDIR
+	@cp $(TARGET).self $(PKG_DIR)/USRDIR/EBOOT.BIN
+	@if [ -f $(ICON0) ]; then cp $(ICON0) $(PKG_DIR)/ICON0.PNG; fi
+	@printf '<?xml version="1.0" encoding="UTF-8"?>\n<sfo>\n<title>%s</title>\n<title_id>%s</title_id>\n<version>01.00</version>\n<app_ver>01.00</app_ver>\n<parental_level>1</parental_level>\n</sfo>\n' "$(TITLE)" "$(APPID)" > sfo.xml
+	@$(SFO) sfo.xml $(PKG_DIR)/PARAM.SFO
+	@$(PKG) --contentid $(CONTENTID) $(PKG_DIR)/ $(TARGET).pkg
+
+%.o: %.cpp
+	$(CXX) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -rf pkg source/*.o *.elf *.self *.pkg
+	rm -f *.o *.elf *.self *.pkg sfo.xml
+	rm -rf $(PKG_DIR)
+
+.PHONY: all pkg clean
