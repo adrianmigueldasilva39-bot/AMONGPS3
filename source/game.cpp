@@ -131,7 +131,6 @@ void Game::do_task(int idx) {
         }
     }
 }
-
 void Game::update_bots() {
     for (size_t i = 0; i < bots.size(); i++) {
         PlayerBean &b = bots[i];
@@ -276,9 +275,9 @@ void Game::vote_logic() {
 void Game::update_game() {
     frame++;
     timer++;
-    ioPadInfo padinfo;
-    ioPadData paddata;
-    ioPadGetInfo(0, &padinfo);
+    padInfo padinfo;
+    padData paddata;
+    ioPadGetInfo(&padinfo);
     int crossNow = 0;
     int triNow = 0;
     int lx = 128;
@@ -287,10 +286,10 @@ void Game::update_game() {
     int triPressed = 0;
     if (padinfo.status) {
         ioPadGetData(0, &paddata);
-        crossNow = (paddata.button[PAD_BUTTON_OFFSET_DIGITAL2] & PAD_CTRL_CROSS) ? 1 : 0;
-        triNow = (paddata.button[PAD_BUTTON_OFFSET_DIGITAL2] & PAD_CTRL_TRIANGLE) ? 1 : 0;
-        lx = paddata.button[PAD_BUTTON_OFFSET_ANALOG_LEFT_X];
-        ly = paddata.button[PAD_BUTTON_OFFSET_ANALOG_LEFT_Y];
+        crossNow = paddata.BTN_CROSS ? 1 : 0;
+        triNow = paddata.BTN_TRIANGLE ? 1 : 0;
+        lx = paddata.ANA_L_H;
+        ly = paddata.ANA_L_V;
         if (crossNow && !padOldCross) crossPressed = 1;
         if (triNow && !padOldTriangle) triPressed = 1;
         padOldCross = crossNow;
