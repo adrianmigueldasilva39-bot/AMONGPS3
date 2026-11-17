@@ -30,7 +30,7 @@ pkg: $(TARGET).self
 	@mkdir -p $(PKG_DIR)/USRDIR
 	@cp $(TARGET).self $(PKG_DIR)/USRDIR/EBOOT.BIN
 	@if [ -f $(ICON0) ]; then cp $(ICON0) $(PKG_DIR)/ICON0.PNG; fi
-	@printf '<?xml version="1.0" encoding="UTF-8"?>\n<sfo>\n<title>%s</title>\n<title_id>%s</title_id>\n<version>01.00</version>\n<app_ver>01.00</app_ver>\n<parental_level>1</parental_level>\n</sfo>\n' "$(TITLE)" "$(APPID)" > sfo.xml
+	@sed -e "s/Test/$(TITLE)/g" -e "s/TEST00000/$(APPID)/g" $(PSL1GHT)/sfo.xml > sfo.xml
 	@$(SFO) sfo.xml $(PKG_DIR)/PARAM.SFO
 	@$(PKG) --contentid $(CONTENTID) $(PKG_DIR)/ $(TARGET).pkg
 
